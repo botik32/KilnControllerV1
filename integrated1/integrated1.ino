@@ -258,6 +258,8 @@ void resetStepsRun(struct Menu * menu)
   s_msForCurrentStep = s_msSinceStart;
   s_PID.heatOn = false;
   resetPID();
+  // disable heating element for precaution.
+  toggleSSR(LOW);
 }
 
 void initStep(struct Menu * menu)
@@ -632,6 +634,7 @@ void handleButtonsRunSteps(struct Menu * menu, struct ButtonHit buttonHit)
   switch(buttonHit.key)
   {
   case KEY_RIGHT:
+    resetStepsRun(menu);
     menu->submenuId = MENU_MONITOR;
     break;
   case KEY_UP:
@@ -639,6 +642,7 @@ void handleButtonsRunSteps(struct Menu * menu, struct ButtonHit buttonHit)
   case KEY_DOWN:
     break;
   case KEY_LEFT:
+    resetStepsRun(menu);
     menu->submenuId = MENU_EDITSTEPS;
     break;
   case KEY_SELECT:
