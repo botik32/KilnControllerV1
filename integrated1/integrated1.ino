@@ -145,6 +145,11 @@ void resetSteps(struct TemperatureStep *steps)
 
 // temperature sensor goes here
 double tempC = 0;
+// sliding temp average
+static const int AVG_TEMP_SAMPLES = 16;
+double tempWindow[AVG_TEMP_SAMPLES] = {0.};
+unsigned char nextSamplePos = 0;
+double tempAverage = 0;
 
 unsigned int s_ticks = 0;
 unsigned long s_secondsAtStep = 0;	// when running steps
@@ -163,8 +168,11 @@ struct PID
   bool activateI;
   float tempIncrementRate; // computed increase rate for INCR mode
   float startTemp;         // starting temperature for INC mode
-  static const float P_RATIO = 0.2;
-  static const float I_RATIO = 0.0001;
+  static const float P_RATIO = 0.2f;
+  static const float I_RATIO = 0.0001f;
+  static const float D_RATIO = 100.f;	// inertia compensation: 
+					// depends on how far the sensor is from the coil
+  static const float D_RATIO_NEG = 50.f;// smaller when temperature is decreasing.
 };
 struct PID s_PID;
 
@@ -288,6 +296,8 @@ float runStep(struct Menu * menu)
   short stepId = menu->subMenus[MENU_RUNSTEPS].stepId;
   float targetTemp = 0.f;
 
+  static float prevAverageTemp = -1.f;
+
   // actually perform running here
   s_msAtStep = (s_msSinceStart - s_msForCurrentStep);
   s_secondsAtStep = s_msAtStep / 1000;
@@ -311,6 +321,19 @@ float runStep(struct Menu * menu)
     else if(tempC >= targetTemp)
       s_PID.activateI = true;
 
+    float d = 0.f;
+    if (prevAverageTemp > -1.f)
+    {
+      float deltaT = (tempAverage - prevAverageTemp); // counter inertia 
+      if (deltaT < 0)
+        d = -deltaT * PID::D_RATIO_NEG; // sensor may report a sporadic decrease even if temp is actually increasing
+					// hence NEG ratio should be less.
+      else
+        d = -deltaT * PID::D_RATIO;
+    }
+    prevAverageTemp = tempAverage;
+    
+
     if (0)
     {
       char buf[40];
@@ -319,7 +342,7 @@ float runStep(struct Menu * menu)
       Serial.println(buf);
     }
 
-    int action = p + s_PID.i;
+    int action = p + s_PID.i + d;
     //if (action >= 1 && !s_PID.heatOn)
     if (action > 0.1 && !s_PID.heatOn)
     {
@@ -771,6 +794,21 @@ double readTemp()
   return s_temp;
 }
 
+void updateTempAverage()
+{
+  tempWindow[nextSamplePos] = tempC;
+  ++nextSamplePos;
+  if (nextSamplePos >= AVG_TEMP_SAMPLES)
+    nextSamplePos = 0;
+
+  double tempSum = 0;
+  for (int i=0; i<AVG_TEMP_SAMPLES; ++i)
+    tempSum += tempWindow[i];
+
+  tempAverage = tempSum / AVG_TEMP_SAMPLES;
+}
+
+
 void loop()
 {
   // your main loop code here...
@@ -781,8 +819,12 @@ void loop()
   char * line2;
 
   tempC = readTemp();
-  //Serial.print("Deg C = "); 
-  //Serial.println(tempC);
+  updateTempAverage();
+
+  Serial.print("Deg C = "); 
+  Serial.print(tempC);
+  Serial.print("; avg T=");
+  Serial.println(tempAverage);
 
   handleButtons(&menu, btn);
   getCurrentMessage(&menu, &line1, &line2);
