@@ -359,6 +359,7 @@ float runStep(struct Menu * menu)
       ++stepId;
       if (stepId < s_configuredStepsCount)
       {
+        menu->subMenus[MENU_RUNSTEPS].stepId = stepId;
         initStep(menu);
       }
     } 
@@ -368,6 +369,7 @@ float runStep(struct Menu * menu)
   {
     // disable heating element.
     toggleSSR(LOW);
+    menu->submenuId = MENU_MONITOR;
   }
 
   return targetTemp;
