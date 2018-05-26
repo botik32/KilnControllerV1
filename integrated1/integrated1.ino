@@ -124,7 +124,7 @@ struct TemperatureStep
   bool  holdTemp;	// hold or increase 
 };
 
-#define MAX_STEPS 4
+#define MAX_STEPS 32
 
 static struct TemperatureStep s_configuredSteps[MAX_STEPS];
 static int s_configuredStepsCount = 0;
