@@ -125,6 +125,9 @@ struct TemperatureStep
 };
 
 #define MAX_STEPS 32
+#define COIL_SKIP_FACTOR 0	// 0 for no skip, 1 for 50% skip, 2 for 1/3 skip, N for 1/N+1 skip
+				// Negative values for prevalent skip, e.g. -1 for 50% skip, -2 for 2/3 skip, -N for N/N+1 skip
+				// use this if your coil is too powerful (e.g., 3000w)
 
 static struct TemperatureStep s_configuredSteps[MAX_STEPS];
 static int s_configuredStepsCount = 0;
@@ -168,6 +171,7 @@ struct PID
   bool activateI;
   float tempIncrementRate; // computed increase rate for INCR mode
   float startTemp;         // starting temperature for INC mode
+  unsigned long ticksRunning;
   static const float P_RATIO = 0.2f;
   static const float I_RATIO = 0.0001f;
   static const float D_RATIO = 100.f;	// inertia compensation: 
@@ -200,6 +204,7 @@ void resetPID()
   s_PID.activateI = 0;
   s_PID.tempIncrementRate = 0;
   s_PID.startTemp = 0;
+  s_PID.ticksRunning = 0;
 }
 
 /////      End   SSR control logic
@@ -341,15 +346,30 @@ float runStep(struct Menu * menu)
       Serial.println(buf);
     }
 
-    int action = p + s_PID.i + d;
-    //if (action >= 1 && !s_PID.heatOn)
-    if (action > 0.1 && !s_PID.heatOn)
+    // prevent coil overloading and other effects (overshooting) if coil is too high watt rating.
+    ++s_PID.ticksRunning;
+    if (COIL_SKIP_FACTOR > 0 && (s_PID.ticksRunning % (COIL_SKIP_FACTOR+1))==0)
     {
-      toggleSSR(HIGH);
-    }
-    else if (action < 1 && s_PID.heatOn)
-    {
+      // skip heating this tick.
       toggleSSR(LOW);
+    }
+    else if (COIL_SKIP_FACTOR < 0 && (s_PID.ticksRunning % (-(COIL_SKIP_FACTOR)+1))!=0)
+    {
+      // skip heating this tick (prevalent skip mode).
+      toggleSSR(LOW);
+    }
+    else
+    {
+      int action = p + s_PID.i + d;
+      //if (action >= 1 && !s_PID.heatOn)
+      if (action > 0.1 && !s_PID.heatOn)
+      {
+        toggleSSR(HIGH);
+      }
+      else if (action < 1 && s_PID.heatOn)
+      {
+        toggleSSR(LOW);
+      }
     }
 
     if (s_secondsAtStep >= ((unsigned long)curStep->duration)*60)
